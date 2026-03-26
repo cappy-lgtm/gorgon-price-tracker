@@ -1,0 +1,32 @@
+name: Weekly Price Scraper
+
+on:
+  schedule:
+    - cron: '0 21 * * 0' # Runs at 9:00 AM NZDT every Monday (21:00 UTC Sunday)
+  workflow_dispatch: # This adds a "Run Now" button to GitHub
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run the scraper
+        run: python scraper.py
+
+      - name: Save the results
+        run: |
+          git config --global user.name "GorgonBot"
+          git config --global user.email "bot@gorgon.co.nz"
+          git add prices.csv
+          git commit -m "Update prices for $(date)" || exit 0
+          git push
