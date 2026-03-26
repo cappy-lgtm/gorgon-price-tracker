@@ -2,8 +2,8 @@ name: Weekly Price Scraper
 
 on:
   schedule:
-    - cron: '0 21 * * 0' # Runs at 9:00 AM NZDT every Monday (21:00 UTC Sunday)
-  workflow_dispatch: # This adds a "Run Now" button to GitHub
+    - cron: '0 21 * * 0'
+  workflow_dispatch:
 
 jobs:
   scrape:
@@ -30,3 +30,4 @@ jobs:
           git add prices.csv
           git commit -m "Update prices for $(date)" || exit 0
           git push
+          
