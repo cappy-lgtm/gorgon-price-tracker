@@ -10,7 +10,7 @@ import os
 COMPETITORS = {
     "Mighty Ape": {"url": "https://www.mightyape.co.nz/mn/shop/?q=", "price": ".price .value", "oos": ".unavailable"},
     "Vagabond": {"url": "https://vagabond.co.nz/search.php?search_query=", "price": ".price", "oos": ".out-of-stock"},
-    "Hobby Collective": {"url": "https://thehobbycollective.co.nz/search.php?search_query=", "price": ".price--withoutTax", "oos": ".out_of_stock"},
+    "Hobby Collective": {"url": "https://thehobbycollective.co.nz/search.php?search_query=", "price": ".price--withoutTax", "oos": ".out-of-stock-label"},
     "Iron Knight": {"url": "https://ironknightgaming.co.nz/search?q=", "price": ".price-item--sale", "oos": ".badge--sold-out"},
     "Goblin Games": {"url": "https://goblingames.nz/search?q=", "price": ".price__regular", "oos": ".product-price__sold-out"},
     "Games Lab": {"url": "https://www.gameslab.co.nz/products/search?keyword=", "price": ".product-card__price", "oos": ".product-card__out-of-stock"},
