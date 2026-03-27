@@ -2,8 +2,8 @@ name: Weekly Price Scraper
 
 on:
   schedule:
-    - cron: '0 21 * * 0'
-  workflow_dispatch:
+    - cron: '0 21 * * 0' # Runs 9 AM Monday NZDT
+  workflow_dispatch: # Allows you to click "Run" manually
 
 jobs:
   scrape:
@@ -18,7 +18,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4
+        run: pip install requests beautifulsoup4 pandas
 
       - name: Run the scraper
         run: python scraper.py
@@ -27,7 +27,6 @@ jobs:
         run: |
           git config --global user.name "GorgonBot"
           git config --global user.email "bot@gorgon.co.nz"
-          git add prices.csv
-          git commit -m "Update prices for $(date)" || echo "No changes to commit"
+          git add price_history.csv
+          git commit -m "Update prices for $(date)" || exit 0
           git push
-          
