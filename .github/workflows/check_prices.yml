@@ -2,7 +2,7 @@ name: Weekly Price Scraper
 
 on:
   schedule:
-    - cron: '0 21 * * 0' # Runs 9 AM Monday NZDT
+    cron: '0 21 * * 0' # Runs 9 AM Monday NZDT
   workflow_dispatch: # Allows you to click "Run" manually
 
 jobs:
