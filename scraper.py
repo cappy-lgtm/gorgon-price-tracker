@@ -21,7 +21,7 @@ COMPETITORS = {
     "Kapiti Hobbies": {"url": "https://www.kapitihobbies.com/search?q=", "price": ".price-item--sale", "oos": ".badge--sold-out"}
 }
 
-    def fetch_price(query, config):
+def fetch_price(query, config):
     encoded_query = urllib.parse.quote(query)
     search_url = f"{config['url']}{encoded_query}"
     
