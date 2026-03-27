@@ -6,60 +6,85 @@ from datetime import datetime
 import time
 import os
 
+# CONFIGURATION: Selectors for each website
 COMPETITORS = {
-    "Mighty Ape": {"url": "https://www.mightyape.co.nz/mn/shop/?q=", "selector": ".price"},
-    "Vagabond": {"url": "https://vagabond.co.nz/search?q=", "selector": ".price"},
-    "Hobby Collective": {"url": "https://thehobbycollective.co.nz/search.php?search_query=", "selector": ".price--withoutTax"},
-    "Iron Knight": {"url": "https://ironknightgaming.co.nz/search?q=", "selector": ".price-item--sale"},
-    "Goblin Games": {"url": "https://goblingames.nz/search?q=", "selector": ".price__regular"},
-    "Games Lab": {"url": "https://www.gameslab.co.nz/search?q=", "selector": ".product-card__price"},
-    "Nova Games": {"url": "https://novagames.co.nz/search?q=", "selector": ".price-item--sale"},
-    "Hobby Lords": {"url": "https://www.hobbylords.co.nz/shop/search?q=", "selector": ".price-current"},
-    "Hobby Master": {"url": "https://hobbymaster.co.nz/search?q=", "selector": ".price"},
-    "Bea DnD": {"url": "https://www.beadndgames.co.nz/search?q=", "selector": ".price-current"}
+    "Mighty Ape": {"url": "https://www.mightyape.co.nz/mn/shop/?q=", "price": ".price", "oos": ".unavailable"},
+    "Vagabond": {"url": "https://vagabond.co.nz/search.php?search_query=", "price": ".price", "oos": ".out-of-stock"},
+    "Hobby Collective": {"url": "https://thehobbycollective.co.nz/search.php?search_query=", "price": ".price--withoutTax", "oos": ".out-of-stock-label"},
+    "Iron Knight": {"url": "https://ironknightgaming.co.nz/search?q=", "price": ".price-item--sale", "oos": ".badge--sold-out"},
+    "Goblin Games": {"url": "https://goblingames.nz/search?q=", "price": ".price__regular", "oos": ".product-price__sold-out"},
+    "Games Lab": {"url": "https://www.gameslab.co.nz/products/search?keyword=", "price": ".product-card__price", "oos": ".product-card__out-of-stock"},
+    "Nova Games": {"url": "https://novagames.co.nz/search?q=", "price": ".price-item--sale", "oos": ".badge--sold-out"},
+    "Hobby Lords": {"url": "https://www.hobbylords.co.nz/shop/search?q=", "price": ".price-current", "oos": ".stock-out"},
+    "Hobby Master": {"url": "https://hobbymaster.co.nz/products/search?search=", "price": ".product-price", "oos": ".out-of-stock"},
+    "Bea DnD": {"url": "https://www.beadndgames.co.nz/search?q=", "price": ".price-current", "oos": ".out-of-stock"},
+    "Kapiti Hobbies": {"url": "https://www.kapitihobbies.com/search?q=", "price": ".price-item--sale", "oos": ".badge--sold-out"}
 }
 
 def fetch_price(query, config):
-    encoded_query = urllib.parse.quote_plus(query)
+    # Use standard encoding (%20)
+    encoded_query = urllib.parse.quote(query)
     search_url = f"{config['url']}{encoded_query}"
+    
     try:
-        time.sleep(1.5) 
-        headers = {"User-Agent": "Mozilla/5.0"}
+        time.sleep(1.2) # Small delay to be polite to servers
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
         res = requests.get(search_url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
-        price_tag = soup.select_one(config['selector'])
-        return price_tag.get_text(strip=True) if price_tag else "Not Found"
-    except:
+        
+        # 1. Find the price
+        price_tag = soup.select_one(config['price'])
+        if not price_tag:
+            return "Not Found"
+        
+        price_text = price_tag.get_text(strip=True)
+        
+        # 2. Check if Out of Stock
+        # We check the specific OOS selector AND look for common "sold out" text in the page
+        oos_tag = soup.select_one(config['oos'])
+        page_text = res.text.lower()
+        
+        if oos_tag or "sold out" in page_text or "out of stock" in page_text:
+            return f"{price_text} (OOS)"
+            
+        return price_text
+    except Exception as e:
         return "Error"
 
-# --- Main Script ---
-print(f"--- Scrape Started at {datetime.now()} ---")
+# --- MAIN EXECUTION ---
+print(f"--- Scrape Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
 
+# Load your 3-column CSV
 skus_df = pd.read_csv('skus.csv')
 date_stamp = datetime.now().strftime("%Y-%m-%d")
 new_rows = []
 
 for _, row in skus_df.iterrows():
-    search_term = f"{row['sku']} {row['name']}"
+    # Use the specific 'search' column for the query
+    search_query = row['search']
+    product_name = row['name']
+    sku = row['sku']
+    
     for comp_name, config in COMPETITORS.items():
-        print(f"Checking {comp_name} for: {search_term}...")
-        price = fetch_price(search_term, config)
+        print(f"Checking {comp_name} -> {search_query}")
+        price_result = fetch_price(search_query, config)
+        
         new_rows.append({
-            "Date": date_stamp, 
-            "SKU": row['sku'], 
-            "Product": row['name'], 
-            "Competitor": comp_name, 
-            "Price": price
+            "Date": date_stamp,
+            "SKU": sku,
+            "Product": product_name,
+            "Competitor": comp_name,
+            "Price": price_result
         })
 
+# Save to CSV
 history_file = 'price_history.csv'
-new_data_df = pd.DataFrame(new_rows)
+new_df = pd.DataFrame(new_rows)
 
 if not os.path.isfile(history_file):
-    print(f"!!! {history_file} not found. Creating a new one...")
-    new_data_df.to_csv(history_file, index=False)
+    new_df.to_csv(history_file, index=False)
 else:
-    print(f"Found {history_file}. Appending {len(new_rows)} new lines...")
-    new_data_df.to_csv(history_file, mode='a', header=False, index=False)
+    # Append without header
+    new_df.to_csv(history_file, mode='a', header=False, index=False)
 
 print("--- Scrape Complete! ---")
