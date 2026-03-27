@@ -82,9 +82,12 @@ history_file = 'price_history.csv'
 new_df = pd.DataFrame(new_rows)
 
 if not os.path.isfile(history_file):
+    # Create the file with headers
     new_df.to_csv(history_file, index=False)
 else:
-    # Append without header
-    new_df.to_csv(history_file, mode='a', header=False, index=False)
+    # Open the file in append mode and ensure we start on a new line
+    with open(history_file, 'a') as f:
+        f.write('\n') # This is the magic "Enter" key strike
+        new_df.to_csv(f, header=False, index=False)
 
 print("--- Scrape Complete! ---")
