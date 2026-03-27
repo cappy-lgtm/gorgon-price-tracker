@@ -2,7 +2,7 @@ name: Weekly Price Scraper
 
 on:
   schedule:
-    cron: '0 21 * * 0' # Runs 9 AM Monday NZDT
+    - cron: '0 21 * * 0' # Runs 9 AM Monday NZDT
   workflow_dispatch: # Allows you to click "Run" manually
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
 
       - name: Save the results
         run: |
-         git config --global user.name "GorgonBot"
+          git config --global user.name "GorgonBot"
           git config --global user.email "bot@gorgon.co.nz"
           git add price_history.csv
           git pull --rebase origin main
