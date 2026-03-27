@@ -25,8 +25,9 @@ jobs:
 
       - name: Save the results
         run: |
-          git config --global user.name "GorgonBot"
+         git config --global user.name "GorgonBot"
           git config --global user.email "bot@gorgon.co.nz"
           git add price_history.csv
+          git pull --rebase origin main
           git commit -m "Update prices for $(date)" || exit 0
-          git push
+          git push origin main
