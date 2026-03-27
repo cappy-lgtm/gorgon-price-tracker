@@ -8,9 +8,9 @@ import os
 
 # CONFIGURATION: Selectors for each website
 COMPETITORS = {
-    "Mighty Ape": {"url": "https://www.mightyape.co.nz/mn/shop/?q=", "price": ".price", "oos": ".unavailable"},
+    "Mighty Ape": {"url": "https://www.mightyape.co.nz/mn/shop/?q=", "price": ".price .value", "oos": ".unavailable"},
     "Vagabond": {"url": "https://vagabond.co.nz/search.php?search_query=", "price": ".price", "oos": ".out-of-stock"},
-    "Hobby Collective": {"url": "https://thehobbycollective.co.nz/search.php?search_query=", "price": ".price--withoutTax", "oos": ".out-of-stock-label"},
+    "Hobby Collective": {"url": "https://thehobbycollective.co.nz/search.php?search_query=", "price": ".price--withoutTax", "oos": ".out_of_stock"},
     "Iron Knight": {"url": "https://ironknightgaming.co.nz/search?q=", "price": ".price-item--sale", "oos": ".badge--sold-out"},
     "Goblin Games": {"url": "https://goblingames.nz/search?q=", "price": ".price__regular", "oos": ".product-price__sold-out"},
     "Games Lab": {"url": "https://www.gameslab.co.nz/products/search?keyword=", "price": ".product-card__price", "oos": ".product-card__out-of-stock"},
@@ -21,15 +21,22 @@ COMPETITORS = {
     "Kapiti Hobbies": {"url": "https://www.kapitihobbies.com/search?q=", "price": ".price-item--sale", "oos": ".badge--sold-out"}
 }
 
-def fetch_price(query, config):
-    # Use standard encoding (%20)
+    def fetch_price(query, config):
     encoded_query = urllib.parse.quote(query)
     search_url = f"{config['url']}{encoded_query}"
     
     try:
-        time.sleep(1.2) # Small delay to be polite to servers
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-        res = requests.get(search_url, headers=headers, timeout=15)
+        time.sleep(2) # Increased delay to be safer
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+            "Referer": "https://google.com"
+        }
+        res = requests.get(search_url, headers=headers, timeout=20)
+        # If the site returns a 403 or 404, we'll know
+        if res.status_code != 200:
+            return f"Status {res.status_code}"
+            
         soup = BeautifulSoup(res.text, 'html.parser')
         
         # 1. Find the price
