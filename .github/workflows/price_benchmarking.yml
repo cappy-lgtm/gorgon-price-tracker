@@ -1,0 +1,38 @@
+name: Weekly Price Benchmarking
+
+on:
+  schedule:
+    # Every Monday at 9am NZST (UTC+12) = 9pm Sunday UTC
+    - cron: '0 21 * * 0'
+  workflow_dispatch:
+    # Also allows manual trigger from GitHub Actions tab
+
+jobs:
+  scrape-prices:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 playwright
+          playwright install chromium
+
+      - name: Run price scraper
+        run: python scraper.py
+
+      - name: Commit updated price history
+        run: |
+          git config --global user.name 'price-bot'
+          git config --global user.email 'price-bot@gorgongames.co.nz'
+          git add price_history.csv
+          # Only commit if there are changes (|| true prevents failure if nothing changed)
+          git diff --staged --quiet || git commit -m "chore: price update $(date +'%Y-%m-%d')"
+          git push
