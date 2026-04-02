@@ -71,6 +71,11 @@ SHOPIFY_DOMAINS = [
 # BigCommerce stores: consistent HTML structure, scrape with CSS selectors
 BIGCOMMERCE_DOMAINS = [
     "vagabond.co.nz",
+]
+
+# Meta tag stores: price is in <meta property="product:price:amount" content="...">
+# in the initial HTML — no JS rendering needed, fast plain request
+META_TAG_DOMAINS = [
     "thehobbycollective.co.nz",
 ]
 
@@ -88,6 +93,8 @@ def detect_platform(url: str) -> str:
     domain = url.lower().split("/")[2] if "://" in url else ""
     if any(d in domain for d in SHOPIFY_DOMAINS):
         return "shopify"
+    if any(d in domain for d in META_TAG_DOMAINS):
+        return "meta_tag"
     if any(d in domain for d in BIGCOMMERCE_DOMAINS):
         return "bigcommerce"
     if any(d in domain for d in PLAYWRIGHT_DOMAINS):
@@ -132,16 +139,17 @@ PRICE_SELECTORS = {
         "span.price",
     ],
     "hobby_master": [
-        # OpenCart-style markup
-        ".price-new",
-        ".price-normal",
+        # Scope to the main product section to avoid recommendation prices.
+        # Their HTML: <section class="product-col product-details">
+        #               <div class="price"><span class="price-new">$68.00</span>
+        "section.product-details span.price-new",
+        "section.product-details span.price-normal",
+        ".product-col.product-details span.price-new",
+        ".product-col.product-details span.price-normal",
+        # Fallbacks (less precise, kept in case structure varies)
         "span.price-new",
         "span.price-normal",
         "[itemprop='price']",
-        ".product-price",
-        "td.price",
-        "span.price",
-        ".price",
     ],
     "games_lab": [
         "[data-hook='formatted-primary-price']",
@@ -252,6 +260,75 @@ def scrape_shopify(url: str) -> dict:
         return {"price": None, "stock_status": "error", "error": f"Parse error: {e}"}
 
 
+def scrape_meta_tag(url: str) -> dict:
+    """
+    Extract price from Open Graph meta tags in the page <head>.
+    Both Mighty Ape and Hobby Collective embed price as:
+      <meta property="product:price:amount" content="76">
+      <meta property="product:price:currency" content="NZD">
+    This is present in the initial HTML response — no JS rendering needed.
+    Much faster and more reliable than scraping the visible page.
+    """
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        if resp.status_code == 404:
+            return {"price": None, "stock_status": "not_found"}
+        if resp.status_code != 200:
+            return {"price": None, "stock_status": "error", "error": f"HTTP {resp.status_code}"}
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Extract price from Open Graph meta tag
+        price_tag = soup.find("meta", property="product:price:amount")
+        price = clean_price(price_tag["content"]) if price_tag else None
+
+        # Stock status from page text
+        page_text = soup.get_text(" ", strip=True).lower()
+        stock_status = detect_stock_from_text(page_text)
+        if price and stock_status == "unknown":
+            stock_status = "in_stock"
+
+        return {"price": price, "stock_status": stock_status}
+
+    except requests.exceptions.RequestException as e:
+        return {"price": None, "stock_status": "error", "error": str(e)}
+
+
+
+    """
+    Fetch a page with requests and extract price + stock via CSS selectors.
+    Used for BigCommerce, Hobby Master, Games Lab, and generic stores.
+    """
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        if resp.status_code == 404:
+            return {"price": None, "stock_status": "not_found"}
+        if resp.status_code != 200:
+            return {"price": None, "stock_status": "error", "error": f"HTTP {resp.status_code}"}
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        page_text = soup.get_text(" ", strip=True).lower()
+
+        price = None
+        selectors = PRICE_SELECTORS.get(platform, PRICE_SELECTORS["generic"])
+        for selector in selectors:
+            el = soup.select_one(selector)
+            if el:
+                raw = el.get("content") or el.get_text(strip=True)
+                price = clean_price(raw)
+                if price:
+                    break
+
+        stock_status = detect_stock_from_text(page_text)
+        if price and stock_status == "unknown":
+            stock_status = "in_stock"
+
+        return {"price": price, "stock_status": stock_status}
+
+    except requests.exceptions.RequestException as e:
+        return {"price": None, "stock_status": "error", "error": str(e)}
+
+
 def scrape_html(url: str, platform: str) -> dict:
     """
     Fetch a page with requests and extract price + stock via CSS selectors.
@@ -290,13 +367,11 @@ def scrape_html(url: str, platform: str) -> dict:
 def scrape_playwright(url: str, platform: str) -> dict:
     """
     Launch a headless Chromium browser to render JS-heavy pages.
-    Used for:
-      - Mighty Ape: Cloudflare blocks plain requests with a 403
+    Currently used for:
       - Hobby Lords: prices are rendered by JavaScript after page load
 
-    Playwright behaves like a real browser — it runs JavaScript, waits for
-    dynamic content to appear, then reads the DOM. This is slower than a plain
-    HTTP request (2-5s per page) but is the only reliable approach for these stores.
+    Note: Mighty Ape was moved to scrape_meta_tag() — their price is in
+    an Open Graph meta tag in the initial HTML, no browser needed.
     """
     if not PLAYWRIGHT_AVAILABLE:
         return {
@@ -382,6 +457,8 @@ def scrape_product(competitor: str, product_name: str, url: str) -> dict:
 
     if platform == "shopify":
         result = scrape_shopify(url)
+    elif platform == "meta_tag":
+        result = scrape_meta_tag(url)
     elif platform == "playwright":
         result = scrape_playwright(url, platform)
     else:
