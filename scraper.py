@@ -35,7 +35,7 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 try:
-    from playwright_stealth import stealth_sync
+    from playwright_stealth import Stealth
     STEALTH_AVAILABLE = True
 except ImportError:
     STEALTH_AVAILABLE = False
@@ -419,7 +419,7 @@ def scrape_playwright(url: str, platform: str) -> dict:
 
             # Apply stealth patches for Mighty Ape (Cloudflare bot detection)
             if "mightyape" in url and STEALTH_AVAILABLE:
-                stealth_sync(page)
+                Stealth().apply_stealth_sync(page)
             elif "mightyape" in url and not STEALTH_AVAILABLE:
                 print(" [stealth not installed, may fail]", end="", flush=True)
 
