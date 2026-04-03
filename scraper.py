@@ -85,9 +85,8 @@ META_TAG_DOMAINS = [
     "thehobbycollective.co.nz",
 ]
 
-# Playwright stores: JS-rendered or Cloudflare-protected, need a real browser
+# Playwright stores: JS-rendered prices, need a real browser
 PLAYWRIGHT_DOMAINS = [
-    "mightyape.co.nz",
     "hobbylords.co.nz",
 ]
 
@@ -105,6 +104,8 @@ def detect_platform(url: str) -> str:
         return "bigcommerce"
     if any(d in domain for d in PLAYWRIGHT_DOMAINS):
         return "playwright"
+    if "mightyape" in domain:
+        return "manual"
     if "hobbymaster" in domain:
         return "hobby_master"
     if "gameslab" in domain:
@@ -417,12 +418,6 @@ def scrape_playwright(url: str, platform: str) -> dict:
             )
             page = context.new_page()
 
-            # Apply stealth patches for Mighty Ape (Cloudflare bot detection)
-            if "mightyape" in url and STEALTH_AVAILABLE:
-                Stealth().apply_stealth_sync(page)
-            elif "mightyape" in url and not STEALTH_AVAILABLE:
-                print(" [stealth not installed, may fail]", end="", flush=True)
-
             # Block images, fonts, and media to speed up page loads
             page.route(
                 "**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,ttf,mp4,mp3}",
@@ -431,22 +426,13 @@ def scrape_playwright(url: str, platform: str) -> dict:
 
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-            # Mighty Ape's React app needs longer to hydrate than Hobby Lords
-            wait_ms = 4000 if "mightyape" in url else 2500
-            page.wait_for_timeout(wait_ms)
+            # Give JS time to render the price after initial DOM load
+            page.wait_for_timeout(2500)
 
             page_text = page.inner_text("body").lower()
 
-            # For Mighty Ape: try the meta tag first (most reliable when page loads)
+            # Try CSS selectors
             price = None
-            if "mightyape" in url:
-                try:
-                    meta = page.query_selector("meta[property='product:price:amount']")
-                    if meta:
-                        price = clean_price(meta.get_attribute("content"))
-                except Exception:
-                    pass
-            # Fall back to CSS selectors if meta tag didn't work
             if not price:
                 for selector in selectors:
                     try:
@@ -496,6 +482,8 @@ def scrape_product(competitor: str, product_name: str, url: str) -> dict:
         result = scrape_shopify(url)
     elif platform == "meta_tag":
         result = scrape_meta_tag(url)
+    elif platform == "manual":
+        result = {"price": None, "stock_status": "manual", "error": "Cloudflare protected — update manually"}
     elif platform == "playwright":
         result = scrape_playwright(url, platform)
     else:
@@ -644,8 +632,10 @@ def main():
         status = result["stock_status"]
         error = result.get("error")
 
-        if error:
+        if error and status != "manual":
             print(f"ERROR: {error}")
+        elif status == "manual":
+            print(f"manual entry needed")
         elif status == "in_stock":
             print(f"${price} -- in stock")
         elif status == "out_of_stock":
