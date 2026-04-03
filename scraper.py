@@ -34,6 +34,12 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
+try:
+    from playwright_stealth import stealth_sync
+    STEALTH_AVAILABLE = True
+except ImportError:
+    STEALTH_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # Config
@@ -171,7 +177,6 @@ OUT_OF_STOCK_SIGNALS = [
     "out of stock",
     "sold out",
     "currently unavailable",
-    "not available",
     "no longer available",
     "out-of-stock",
     "soldout",
@@ -244,8 +249,8 @@ def scrape_shopify(url: str) -> dict:
         if not variants:
             return {"price": None, "stock_status": "error", "error": "No variants in JSON response"}
 
-        any_available = any(v.get("available", False) for v in variants)
-        primary = next((v for v in variants if v.get("available")), variants[0])
+        any_available = any(v.get("available", True) for v in variants)
+        primary = next((v for v in variants if v.get("available", True)), variants[0])
         raw_price = primary.get("price", "")
         price = clean_price(str(raw_price))
 
@@ -389,13 +394,34 @@ def scrape_playwright(url: str, platform: str) -> dict:
 
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+            browser = pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                ]
+            )
             context = browser.new_context(
                 user_agent=HEADERS["User-Agent"],
                 locale="en-NZ",
                 viewport={"width": 1280, "height": 800},
+                # Mask automation signals that Cloudflare looks for
+                extra_http_headers={
+                    "Accept-Language": "en-NZ,en;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                }
+            )
+            # Remove the webdriver property that flags headless browsers
+            context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
             page = context.new_page()
+
+            # Apply stealth patches for Mighty Ape (Cloudflare bot detection)
+            if "mightyape" in url and STEALTH_AVAILABLE:
+                stealth_sync(page)
+            elif "mightyape" in url and not STEALTH_AVAILABLE:
+                print(" [stealth not installed, may fail]", end="", flush=True)
 
             # Block images, fonts, and media to speed up page loads
             page.route(
@@ -405,22 +431,33 @@ def scrape_playwright(url: str, platform: str) -> dict:
 
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-            # Give JS time to render the price after initial DOM load
-            page.wait_for_timeout(2500)
+            # Mighty Ape's React app needs longer to hydrate than Hobby Lords
+            wait_ms = 4000 if "mightyape" in url else 2500
+            page.wait_for_timeout(wait_ms)
 
             page_text = page.inner_text("body").lower()
 
+            # For Mighty Ape: try the meta tag first (most reliable when page loads)
             price = None
-            for selector in selectors:
+            if "mightyape" in url:
                 try:
-                    el = page.query_selector(selector)
-                    if el:
-                        raw = el.get_attribute("content") or el.inner_text()
-                        price = clean_price(raw)
-                        if price:
-                            break
+                    meta = page.query_selector("meta[property='product:price:amount']")
+                    if meta:
+                        price = clean_price(meta.get_attribute("content"))
                 except Exception:
-                    continue
+                    pass
+            # Fall back to CSS selectors if meta tag didn't work
+            if not price:
+                for selector in selectors:
+                    try:
+                        el = page.query_selector(selector)
+                        if el:
+                            raw = el.get_attribute("content") or el.inner_text()
+                            price = clean_price(raw)
+                            if price:
+                                break
+                    except Exception:
+                        continue
 
             stock_status = detect_stock_from_text(page_text)
             if price and stock_status == "unknown":
